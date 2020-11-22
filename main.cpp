@@ -1,11 +1,9 @@
 #include <cstdio>
 #include <cmath>
 #include <vector>
-#include <cstring>
+#include <Tracy.hpp>
 #include <glm/glm.hpp>
 #include <SDL.h>
-#include <functional>
-#include <unistd.h>
 
 #define dims 2
 
@@ -14,18 +12,19 @@ namespace glm {
 }
 
 const static double g_const = 6.67430E-11;
-
+const static double speed = 1;
 class object {
 public:
     double mass;
+    std::string name;
     glm::vec_g velocity;
     glm::vec_g position;
 
-    object(double massin, glm::vec_g pos) : mass(massin), position(pos) {;}
-    object(double massin, glm::vec_g pos, glm::vec_g vel) : mass(massin), position(pos), velocity(vel) {;}
+    object(double massin, glm::vec_g pos, const std::string& name) : mass(massin), position(pos), name(name) {;}
+    object(double massin, glm::vec_g pos, glm::vec_g vel, const std::string& name) : mass(massin), position(pos), velocity(vel), name(name) {;}
 
     void updateForce(glm::vec_g force) {
-        velocity+=force/mass;
+        velocity+=(force*speed)/mass;
     }
 
     void updatePos() {
@@ -76,7 +75,7 @@ public:
 };
 
 void gravitate(object& obj1,object& obj2) {
-    glm::vec_g distance = glm::abs(obj2.position-obj1.position);
+    double distance = glm::distance(obj2.position,obj1.position);
     glm::vec_g unitvec = (obj2.position-obj1.position)/distance;
     glm::vec_g force = -g_const*obj1.mass*obj2.mass/(distance*distance)*unitvec;
     obj2.updateForce(force);
@@ -86,35 +85,62 @@ int main(int argc, char** argv) {
     SDL_Rend rend{};
     rend.init(800);
     std::vector<object*> objs;
-    object test1(5.97237*glm::pow(10,24),glm::vec_g(0, 0),glm::vec_g(0,0));
-    object test2(7.342*glm::pow(10,22),glm::vec_g(384402*glm::pow(10,3),384402*glm::pow(10,3)),glm::vec_g(0,-10000));
+    object test1(8*glm::pow(10,25),glm::vec_g(0, 0),glm::vec_g(0,0),"Earth");
+    object test2(7.342*glm::pow(10,22),glm::vec_g(384402*glm::pow(10,3),0),glm::vec_g(-1000,-1000),"Moon");
     objs.emplace_back(&test1);
     objs.emplace_back(&test2);
     double Scale = glm::pow(10,6);
     bool quit = false;
     while(!quit) {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_MOUSEWHEEL) {
-                if (event.wheel.y > 0) // scroll up
-                {
-                    Scale -= glm::pow(10, 5.5);
-                } else if (event.wheel.y < 0) // scroll down
-                {
-                    Scale += glm::pow(10, 5.5);
+        {
+            ZoneScopedNC("Event handling - SDL",0xff0000);
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_MOUSEWHEEL) {
+                    if (event.wheel.y > 0) // scroll up
+                    {
+                        Scale -= glm::pow(10, 5.5);
+                    } else if (event.wheel.y < 0) // scroll down
+                    {
+                        Scale += glm::pow(10, 5.5);
+                    }
+                }
+                if (event.type == SDL_QUIT) {
+                    quit = true;
                 }
             }
-            if (event.type == SDL_QUIT) {
-                quit = true;
-            }
         }
-        gravitate(test1, test2);
-        //gravitate(test2, test1);
-        //test1.updatePos();
-        test2.updatePos();
+        {
+            ZoneScopedNC("Gravity Calculations",0x00ff00);
+            gravitate(test1, test2);
+            gravitate(test2, test1);
+        }
+        {
+            ZoneScopedNC("Updating positions",0x00ff00);
+            test1.updatePos();
+            test2.updatePos();
+        }
         //test1.printPos();
         //test2.printPos();
-        rend.draw(objs, Scale);
+        {
+            ZoneScopedNC("Draw objects to screen - SDL",0xff0000);
+            rend.draw(objs, Scale);
+        }
+#if 0
+        {
+            ZoneScopedNC("Plot data - Tracy",0x0000ff);
+            int i = 0;
+            for (auto obj : objs) {
+                TracyPlot((obj->name+" Velocity X").c_str(),obj->velocity.x);
+                TracyPlot((obj->name+" Velocity Y").c_str(),obj->velocity.y);
+#if dims==3
+                TracyPlot((obj->name+" Velocity Z").c_str(),obj->velocity.z);
+#endif
+                i++;
+            }
+        }
+#endif
+        FrameMark;
         //usleep(1);
     }
 }
